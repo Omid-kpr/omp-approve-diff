@@ -1,0 +1,65 @@
+{
+  "name": "pi-show-diffs",
+  "version": "0.2.14",
+  "type": "module",
+  "description": "Pi package that adds a diff approval viewer before edit and write tools change files.",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "diff",
+    "approval",
+    "review",
+    "side-by-side"
+  ],
+  "author": "xRyul",
+  "license": "MIT",
+  "homepage": "https://github.com/xRyul/pi-show-diffs#readme",
+  "bugs": {
+    "url": "https://github.com/xRyul/pi-show-diffs/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xRyul/pi-show-diffs.git"
+  },
+  "files": [
+    "index.ts",
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "video": "https://github.com/user-attachments/assets/8bda7619-fcd2-4615-a93a-d15b2fee408b"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "cli-highlight": "^2.1.11",
+    "diff": "^8.0.2"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "@earendil-works/pi-tui": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.74.0",
+    "@earendil-works/pi-tui": "^0.74.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
+  }
+}
