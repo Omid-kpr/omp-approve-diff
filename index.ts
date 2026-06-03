@@ -404,16 +404,52 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 		}
 	}
 
+	function wasUserEdited(preview: ChangePreview, afterText: string): boolean {
+		return preview.afterText !== undefined && afterText !== preview.afterText;
+	}
+
+	function buildReviewedEditMessage(preview: ChangePreview, afterText: string): string {
+		if (wasUserEdited(preview, afterText)) {
+			return `Successfully applied user-reviewed and user-edited final contents to ${preview.path}.`;
+		}
+		return `Successfully applied reviewed final contents to ${preview.path}.`;
+	}
+
+	function buildReviewedWriteMessage(preview: ChangePreview, finalContent: string, afterText: string): string {
+		if (wasUserEdited(preview, afterText)) {
+			return `Successfully wrote ${Buffer.byteLength(finalContent, "utf-8")} bytes of user-reviewed and user-edited final contents to ${preview.path}`;
+		}
+		return `Successfully wrote ${Buffer.byteLength(finalContent, "utf-8")} bytes to ${preview.path}`;
+	}
+
+	function buildReviewedResultDetails(preview: ChangePreview, afterText: string) {
+		if (preview.toolName !== "edit") {
+			return {
+				userReviewed: true,
+				userEdited: wasUserEdited(preview, afterText),
+			};
+		}
+
+		const diffResult = generateDiffString(preview.beforeText ?? "", afterText);
+		return {
+			diff: diffResult.diff,
+			firstChangedLine: diffResult.firstChangedLine,
+			userReviewed: true,
+			userEdited: wasUserEdited(preview, afterText),
+			originalProposedText: preview.afterText,
+			finalAppliedText: afterText,
+		};
+	}
+
 	async function applyReviewedAfterText(preview: ChangePreview, afterText: string): Promise<any> {
 		const finalContent = await restoreReviewedFinalContent(preview.absolutePath, afterText);
 		await mkdir(dirname(preview.absolutePath), { recursive: true });
 		await writeFile(preview.absolutePath, finalContent, "utf-8");
 
 		if (preview.toolName === "edit") {
-			const diffResult = generateDiffString(preview.beforeText ?? "", afterText);
 			return {
-				content: [{ type: "text", text: `Successfully applied reviewed final contents to ${preview.path}.` }],
-				details: { diff: diffResult.diff, firstChangedLine: diffResult.firstChangedLine },
+				content: [{ type: "text", text: buildReviewedEditMessage(preview, afterText) }],
+				details: buildReviewedResultDetails(preview, afterText),
 			};
 		}
 
@@ -423,11 +459,11 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 					type: "text",
 					text:
 						preview.toolName === "write"
-							? `Successfully wrote ${Buffer.byteLength(finalContent, "utf-8")} bytes to ${preview.path}`
-							: `Successfully applied reviewed final contents to ${preview.path}.`,
+							? buildReviewedWriteMessage(preview, finalContent, afterText)
+							: buildReviewedEditMessage(preview, afterText),
 				},
 			],
-			details: undefined,
+			details: buildReviewedResultDetails(preview, afterText),
 		};
 	}
 
