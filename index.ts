@@ -11,7 +11,7 @@ import { computeChangePreview, type ChangePreview, type PreviewToolName } from "
 import { reviewChangePreview } from "./src/ui.js";
 import { initI18n, t } from "./src/i18n.js";
 
-const STATUS_KEY = "pi-show-diffs";
+const STATUS_KEY = "omp-approve-diff";
 const TOOL_CALL_REVIEWED_TOOLS = new Set<PreviewToolName>(["edit", "hashline_edit", "write"]);
 
 interface PendingImmediateApply {
@@ -34,7 +34,7 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 
 	function getStatusLines() {
 		return [
-			"pi-show-diffs",
+			"omp-approve-diff",
 			`Mode: ${config.autoApprove ? t("mode.auto", "auto-approve") : t("mode.manual", "manual review")}`,
 			`Diff colors: ${config.diffColorMode}`,
 			`Diff rail: ${config.showDiffRail ? "on" : "off"}`,
@@ -80,7 +80,7 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 			true,
 			diffColorMode === "theme"
 				? "Diff colors now follow your pi theme backgrounds."
-				: "Diff colors now use pi-show-diffs default backgrounds.",
+				: "Diff colors now use omp-approve-diff default backgrounds.",
 		);
 	}
 
@@ -188,7 +188,7 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 				label: "Diff colors",
 				currentValue: config.diffColorMode,
 				values: ["default", "theme"],
-				description: "default = pi-show-diffs red/green backgrounds; theme = active pi theme success/error backgrounds.",
+				description: "default = omp-approve-diff red/green backgrounds; theme = active pi theme success/error backgrounds.",
 			},
 			{
 				id: "showDiffRail",
@@ -277,7 +277,7 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
 
 			return {
 				render: (width: number) => [
-					truncateToWidth(theme.fg("accent", theme.bold("pi-show-diffs settings")), width, "", false),
+					truncateToWidth(theme.fg("accent", theme.bold("omp-approve-diff settings")), width, "", false),
 					truncateToWidth(theme.fg("muted", `Config: ${CONFIG_PATH}`), width, theme.fg("muted", "…"), false),
 					"",
 					...settingsList.render(width),

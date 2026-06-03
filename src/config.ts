@@ -68,7 +68,7 @@ export const DEFAULT_CONFIG: DiffApprovalConfig = {
 	keybindings: { ...DEFAULT_KEYBINDINGS },
 };
 
-export const CONFIG_PATH = join(getAgentDir(), "extensions", "pi-show-diffs.json");
+export const CONFIG_PATH = join(getAgentDir(), "extensions", "omp-approve-diff.json");
 
 function parseDiffColorMode(value: unknown): DiffColorMode {
 	return value === "theme" ? "theme" : "default";

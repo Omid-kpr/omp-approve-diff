@@ -1,4 +1,4 @@
-# pi-show-diffs
+# omp-approve-diff
 
 warp.dev inspired **pi** extension that stops and shows an editable diff before file changes are applied.
 
@@ -33,13 +33,13 @@ For normal file changes, the modal uses a split diff viewer with:
 Install from npm:
 
 ```bash
-pi install npm:pi-show-diffs
+pi install npm:omp-approve-diff
 ```
 
 Or install directly from GitHub:
 
 ```bash
-pi install git:github.com/xRyul/pi-show-diffs
+pi install git:github.com/xRyul/omp-approve-diff
 ```
 
 ## Commands
@@ -88,7 +88,7 @@ Command args:
 
 Persistent config is stored at:
 
-`~/.pi/agent/extensions/pi-show-diffs.json`
+`~/.pi/agent/extensions/omp-approve-diff.json`
 
 Current config shape:
 
@@ -110,7 +110,7 @@ Current config shape:
 
 `diffColorMode` accepts:
 
-- `default` — use pi-show-diffs predefined diff backgrounds. Dark themes use the original muted red/green; light themes use light-friendly red/green.
+- `default` — use omp-approve-diff predefined diff backgrounds. Dark themes use the original muted red/green; light themes use light-friendly red/green.
 - `theme` — follow your active pi theme's tool success/error backgrounds.
 
 Diff marker options:

@@ -1,5 +1,5 @@
 {
-  "name": "pi-show-diffs",
+  "name": "omp-approve-diff",
   "version": "0.2.14",
   "type": "module",
   "description": "Pi package that adds a diff approval viewer before edit and write tools change files.",
@@ -13,13 +13,13 @@
   ],
   "author": "xRyul",
   "license": "MIT",
-  "homepage": "https://github.com/xRyul/pi-show-diffs#readme",
+  "homepage": "https://github.com/omidkpr/omp-approve-diff#readme",
   "bugs": {
-    "url": "https://github.com/xRyul/pi-show-diffs/issues"
+    "url": "https://github.com/omidkpr/omp-approve-diff/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/xRyul/pi-show-diffs.git"
+    "url": "git+https://github.com/omidkpr/omp-approve-diff.git"
   },
   "files": [
     "index.ts",

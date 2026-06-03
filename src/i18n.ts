@@ -14,7 +14,7 @@ export function t(key: string, fallback: string, params?: Params): string {
 }
 
 const bundles = [
-    { locale: "es", namespace: "pi-show-diffs", messages: {
+    { locale: "es", namespace: "omp-approve-diff", messages: {
         "cmd.diffApproval": "Activar, desactivar o inspeccionar el modo de aprobación de diffs",
         "cmd.showDiffs": "Alias de /diff-approval",
         "status.auto": "✍ aprobación automática de cambios de archivo",
@@ -43,7 +43,7 @@ const bundles = [
         "rpc.approveAuto": "Aprobar + activar aprobación automática",
         "rpc.editTitle": "Editar contenido final de {path}"
     }},
-    { locale: "fr", namespace: "pi-show-diffs", messages: {
+    { locale: "fr", namespace: "omp-approve-diff", messages: {
         "cmd.diffApproval": "Activer, désactiver ou inspecter le mode d’approbation des diffs",
         "cmd.showDiffs": "Alias de /diff-approval",
         "status.auto": "✍ approbation automatique des changements de fichiers",
@@ -72,7 +72,7 @@ const bundles = [
         "rpc.approveAuto": "Approuver + activer l’approbation automatique",
         "rpc.editTitle": "Modifier le contenu final de {path}"
     }},
-    { locale: "pt-BR", namespace: "pi-show-diffs", messages: {
+    { locale: "pt-BR", namespace: "omp-approve-diff", messages: {
         "cmd.diffApproval": "Ativar, desativar ou inspecionar o modo de aprovação de diffs",
         "cmd.showDiffs": "Alias para /diff-approval",
         "status.auto": "✍ aprovação automática de mudanças em arquivos",
@@ -108,7 +108,7 @@ export function initI18n(pi: ExtensionAPI): void {
     if (!events) return;
     for (const bundle of bundles) events.emit("pi-core/i18n/registerBundle", bundle);
     events.emit("pi-core/i18n/requestApi", {
-        namespace: "pi-show-diffs",
+        namespace: "omp-approve-diff",
         callback(api: { t?: Translate } | undefined) {
             if (typeof api?.t === "function") translate = api.t;
         },
