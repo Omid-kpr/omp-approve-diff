@@ -28,6 +28,95 @@ interface MultiEditToolInput {
 	newText?: string;
 }
 
+type ParsedFreeformEditOperation =
+	| { kind: "replace"; start: number; end: number; content: string[] }
+	| { kind: "delete"; start: number; end: number }
+	| { kind: "insert"; at: number; content: string[] };
+
+interface ParsedFreeformEditInput {
+	path: string;
+	operations: ParsedFreeformEditOperation[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+function parsePositiveInt(value: string): number | undefined {
+	if (!/^[1-9]\d*$/.test(value)) return undefined;
+	const parsed = Number(value);
+	return Number.isSafeInteger(parsed) ? parsed : undefined;
+}
+
+function parseRange(start: string, end?: string): { start: number; end: number } | undefined {
+	const parsedStart = parsePositiveInt(start);
+	const parsedEnd = end === undefined ? parsedStart : parsePositiveInt(end);
+	if (parsedStart === undefined || parsedEnd === undefined || parsedEnd < parsedStart) return undefined;
+	return { start: parsedStart, end: parsedEnd };
+}
+
+function parseFreeformEditInput(input: unknown): ParsedFreeformEditInput | { error: string; path?: string } | null {
+	if (typeof input !== "string") return null;
+
+	const lines = normalizeToLF(input).split("\n");
+	const headerIndex = lines.findIndex((line) => line.startsWith("¶"));
+	if (headerIndex === -1) return { error: "Freeform edit patch is missing a file header." };
+
+	const headerMatch = lines[headerIndex]!.match(/^¶(.+)#[0-9A-Fa-f]{4}$/);
+	if (!headerMatch) return { error: "Freeform edit patch has an invalid file header." };
+	const filePath = headerMatch[1]!;
+
+	const operations: ParsedFreeformEditOperation[] = [];
+	for (let i = headerIndex + 1; i < lines.length; i++) {
+		const line = lines[i]!;
+		if (!line || line === "*** End Patch") continue;
+
+		const replaceMatch = line.match(/^replace (\d+)\.\.(\d+):$/);
+		const insertMatch = line.match(/^insert (before|after) (\d+):$/);
+		const deleteMatch = line.match(/^delete (\d+)(?:\.\.(\d+))?$/);
+
+		if (replaceMatch || insertMatch) {
+			const content: string[] = [];
+			while (i + 1 < lines.length && lines[i + 1]!.startsWith("+")) {
+				i++;
+				content.push(lines[i]!.slice(1));
+			}
+
+			if (replaceMatch) {
+				const range = parseRange(replaceMatch[1]!, replaceMatch[2]!);
+				if (!range) return { error: `Invalid replace range: ${line}`, path: filePath };
+				operations.push({ kind: "replace", start: range.start, end: range.end, content });
+				continue;
+			}
+
+			const anchor = parsePositiveInt(insertMatch![2]!);
+			if (anchor === undefined) return { error: `Invalid insert anchor: ${line}`, path: filePath };
+			operations.push({
+				kind: "insert",
+				at: insertMatch![1] === "before" ? anchor - 1 : anchor,
+				content,
+			});
+			continue;
+		}
+
+		if (deleteMatch) {
+			const range = parseRange(deleteMatch[1]!, deleteMatch[2]);
+			if (!range) return { error: `Invalid delete range: ${line}`, path: filePath };
+			operations.push({ kind: "delete", start: range.start, end: range.end });
+			continue;
+		}
+
+		if (line.startsWith("replace block ") || line.startsWith("delete block ")) {
+			return { error: "Freeform edit preview does not support block operations.", path: filePath };
+		}
+
+		return { error: `Unsupported freeform edit operation: ${line}`, path: filePath };
+	}
+
+	if (operations.length === 0) return { error: "Freeform edit patch contains no operations.", path: filePath };
+	return { path: filePath, operations };
+}
+
 export type PreviewToolName = "edit" | "hashline_edit" | "write";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".icns", ".tif", ".tiff", ".heic", ".avif"]);
@@ -167,6 +256,96 @@ export function rebuildPreviewAfterManualEdit(preview: ChangePreview, editedAfte
 	);
 }
 
+
+function applyFreeformEditOperations(normalizedContent: string, operations: ParsedFreeformEditOperation[]): string | { error: string } {
+	const lines = normalizedContent.split("\n");
+	const planned = operations.map((operation, index) => ({ operation, index })).sort((a, b) => {
+		const aAt = a.operation.kind === "insert" ? a.operation.at : a.operation.start - 1;
+		const bAt = b.operation.kind === "insert" ? b.operation.at : b.operation.start - 1;
+		return bAt - aAt || b.index - a.index;
+	});
+
+	for (const { operation } of planned) {
+		if (operation.kind === "insert") {
+			if (operation.at < 0 || operation.at > lines.length) return { error: "Freeform edit insert anchor is outside the file." };
+			lines.splice(operation.at, 0, ...operation.content);
+			continue;
+		}
+
+		const startIndex = operation.start - 1;
+		const deleteCount = operation.end - operation.start + 1;
+		if (startIndex < 0 || operation.end > lines.length) return { error: "Freeform edit range is outside the file." };
+
+		if (operation.kind === "replace") {
+			lines.splice(startIndex, deleteCount, ...operation.content);
+		} else {
+			lines.splice(startIndex, deleteCount);
+		}
+	}
+
+	return lines.join("\n");
+}
+
+async function computeFreeformEditPreview(input: ParsedFreeformEditInput, cwd: string): Promise<ChangePreview> {
+	const absolutePath = resolveToCwd(input.path, cwd);
+
+	try {
+		await access(absolutePath, fsConstants.R_OK);
+	} catch {
+		return errorPreview("edit", input.path, absolutePath, `File not found: ${input.path}`, ["Freeform edit patch"]);
+	}
+
+	try {
+		const rawBuffer = await readFile(absolutePath);
+		const binaryKind = detectBinaryKind(input.path, rawBuffer);
+		if (binaryKind) {
+			return errorPreview(
+				"edit",
+				input.path,
+				absolutePath,
+				`${binaryKind === "image" ? "Image" : "Binary"} file detected: textual diff preview is not available for ${input.path}.`,
+				["Freeform edit patch", binaryKind === "image" ? "Image file" : "Binary file"],
+				{
+					diff: createBinaryPreviewMessage(
+						input.path,
+						binaryKind,
+						`${binaryKind === "image" ? "Image" : "Binary"} file content cannot be shown as a text diff.`,
+						"This edit tool call is likely invalid for this file.",
+					),
+				},
+			);
+		}
+
+		const rawContent = rawBuffer.toString("utf-8");
+		const { text: content } = stripBom(rawContent);
+		const normalizedContent = normalizeToLF(content);
+		const afterText = applyFreeformEditOperations(normalizedContent, input.operations);
+		if (typeof afterText !== "string") {
+			return errorPreview("edit", input.path, absolutePath, afterText.error, ["Freeform edit patch"], {
+				beforeText: normalizedContent,
+			});
+		}
+
+		return createChangePreviewFromTexts(
+			"edit",
+			input.path,
+			absolutePath,
+			normalizedContent,
+			afterText,
+			[`${input.operations.length} freeform edit operation(s)`],
+			normalizedContent === afterText ? `No changes would be made to ${input.path}.` : undefined,
+		);
+	} catch (error) {
+		return errorPreview(
+			"edit",
+			input.path,
+			absolutePath,
+			error instanceof Error ? error.message : String(error),
+			["Freeform edit patch"],
+		);
+	}
+}
+
 function getEditOperations(input: MultiEditToolInput): { operations: MultiEditOperation[]; mode: "single" | "multi" } | { error: string } {
 	if (Array.isArray(input.edits)) {
 		if (input.edits.length === 0) {
@@ -187,28 +366,37 @@ function getEditOperations(input: MultiEditToolInput): { operations: MultiEditOp
 	return { error: "The edit call is missing oldText/newText or edits[]." };
 }
 
-async function computeEditPreview(input: EditToolInput | MultiEditToolInput, cwd: string): Promise<ChangePreview> {
-	const absolutePath = resolveToCwd(input.path, cwd);
+async function computeEditPreview(input: unknown, cwd: string): Promise<ChangePreview | null> {
+	const freeformInput = parseFreeformEditInput(input);
+	if (freeformInput) {
+		if ("operations" in freeformInput) return computeFreeformEditPreview(freeformInput, cwd);
+		const filePath = freeformInput.path ?? "unknown";
+		return errorPreview("edit", filePath, resolveToCwd(filePath, cwd), freeformInput.error, ["Freeform edit patch"]);
+	}
+
+	if (!isRecord(input) || typeof input.path !== "string") return null;
+	const typedInput = input as EditToolInput | MultiEditToolInput;
+	const absolutePath = resolveToCwd(typedInput.path, cwd);
 
 	try {
 		await access(absolutePath, fsConstants.R_OK);
 	} catch {
-		return errorPreview("edit", input.path, absolutePath, `File not found: ${input.path}`, ["Replace exact text"]);
+		return errorPreview("edit", typedInput.path, absolutePath, `File not found: ${typedInput.path}`, ["Replace exact text"]);
 	}
 
 	try {
 		const rawBuffer = await readFile(absolutePath);
-		const binaryKind = detectBinaryKind(input.path, rawBuffer);
+		const binaryKind = detectBinaryKind(typedInput.path, rawBuffer);
 		if (binaryKind) {
 			return errorPreview(
 				"edit",
-				input.path,
+				typedInput.path,
 				absolutePath,
-				`${binaryKind === "image" ? "Image" : "Binary"} file detected: textual diff preview is not available for ${input.path}.`,
+				`${binaryKind === "image" ? "Image" : "Binary"} file detected: textual diff preview is not available for ${typedInput.path}.`,
 				["Replace exact text", binaryKind === "image" ? "Image file" : "Binary file"],
 				{
 					diff: createBinaryPreviewMessage(
-						input.path,
+						typedInput.path,
 						binaryKind,
 						`${binaryKind === "image" ? "Image" : "Binary"} file content cannot be shown as a text diff.`,
 						"This edit tool call is likely invalid for this file.",
@@ -219,9 +407,9 @@ async function computeEditPreview(input: EditToolInput | MultiEditToolInput, cwd
 		const rawContent = rawBuffer.toString("utf-8");
 		const { text: content } = stripBom(rawContent);
 		const normalizedContent = normalizeToLF(content);
-		const operationInfo = getEditOperations(input);
+		const operationInfo = getEditOperations(typedInput);
 		if ("error" in operationInfo) {
-			return errorPreview("edit", input.path, absolutePath, operationInfo.error, ["Replace exact text"]);
+			return errorPreview("edit", typedInput.path, absolutePath, operationInfo.error, ["Replace exact text"]);
 		}
 
 		const fuzzyContent = normalizeForFuzzyMatch(normalizedContent);
@@ -241,9 +429,9 @@ async function computeEditPreview(input: EditToolInput | MultiEditToolInput, cwd
 			if (!matchResult.found) {
 				return errorPreview(
 					"edit",
-					input.path,
+					typedInput.path,
 					absolutePath,
-					`${label}: could not find the exact text in ${input.path}. The old text must be unique and match the file.`,
+					`${label}: could not find the exact text in ${typedInput.path}. The old text must be unique and match the file.`,
 					[`${operationInfo.operations.length} targeted edit(s)`],
 				);
 			}
@@ -253,9 +441,9 @@ async function computeEditPreview(input: EditToolInput | MultiEditToolInput, cwd
 			if (occurrences > 1) {
 				return errorPreview(
 					"edit",
-					input.path,
+					typedInput.path,
 					absolutePath,
-					`${label}: found ${occurrences} occurrences in ${input.path}. Add more context so the edit is unique.`,
+					`${label}: found ${occurrences} occurrences in ${typedInput.path}. Add more context so the edit is unique.`,
 					[`${operationInfo.operations.length} targeted edit(s)`],
 				);
 			}
@@ -275,9 +463,9 @@ async function computeEditPreview(input: EditToolInput | MultiEditToolInput, cwd
 			if (current.index < previous.index + previous.matchLength) {
 				return errorPreview(
 					"edit",
-					input.path,
+					typedInput.path,
 					absolutePath,
-					`Some edits in ${input.path} overlap or target the same region. Merge them into one edit.`,
+					`Some edits in ${typedInput.path} overlap or target the same region. Merge them into one edit.`,
 					[`${operationInfo.operations.length} targeted edit(s)`],
 				);
 			}
@@ -303,20 +491,20 @@ async function computeEditPreview(input: EditToolInput | MultiEditToolInput, cwd
 		if (baseContent === newContent) {
 			return createChangePreviewFromTexts(
 				"edit",
-				input.path,
+				typedInput.path,
 				absolutePath,
 				baseContent,
 				newContent,
 				summaryLines,
-				`No changes would be made to ${input.path}.`,
+				`No changes would be made to ${typedInput.path}.`,
 			);
 		}
 
-		return createChangePreviewFromTexts("edit", input.path, absolutePath, baseContent, newContent, summaryLines);
+		return createChangePreviewFromTexts("edit", typedInput.path, absolutePath, baseContent, newContent, summaryLines);
 	} catch (error) {
 		return errorPreview(
 			"edit",
-			input.path,
+			typedInput.path,
 			absolutePath,
 			error instanceof Error ? error.message : String(error),
 			["Replace exact text"],
@@ -411,7 +599,7 @@ export async function computeChangePreview(
 	input: unknown,
 	cwd: string,
 ): Promise<ChangePreview | null> {
-	if (toolName === "edit") return computeEditPreview(input as EditToolInput, cwd);
+	if (toolName === "edit") return computeEditPreview(input, cwd);
 	if (toolName === "write") return computeWritePreview(input as WriteToolInput, cwd);
 	if (toolName === "hashline_edit") return computeHashlineEditChangePreview(input as HashlineEditInput, cwd);
 	return null;
