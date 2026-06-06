@@ -56,9 +56,14 @@ function parseRange(start: string, end?: string): { start: number; end: number }
 }
 
 function parseFreeformEditInput(input: unknown): ParsedFreeformEditInput | { error: string; path?: string } | null {
-	if (typeof input !== "string") return null;
+	const patchText = typeof input === "string"
+		? input
+		: isRecord(input) && typeof input.input === "string"
+			? input.input
+			: null;
+	if (patchText === null) return null;
 
-	const lines = normalizeToLF(input).split("\n");
+	const lines = normalizeToLF(patchText).split("\n");
 	const headerIndex = lines.findIndex((line) => line.startsWith("¶"));
 	if (headerIndex === -1) return { error: "Freeform edit patch is missing a file header." };
 
