@@ -37,6 +37,17 @@ import { reviewChangePreview } from "./src/ui.js";
 import { initI18n, t } from "./src/i18n.js";
 
 const STATUS_KEY = "omp-approve-diff";
+const DEBUG_LOG_PATH = "/tmp/omp-approve-diff-debug.log";
+function debugLog(event: string, data: unknown) {
+  try {
+    const line = JSON.stringify({
+      time: new Date().toISOString(),
+      event,
+      data,
+    });
+    void writeFile(DEBUG_LOG_PATH, `${line}\n`, { flag: "a" });
+  } catch {}
+}
 const TOOL_CALL_REVIEWED_TOOLS = new Set<PreviewToolName>([
   "edit",
   "hashline_edit",
@@ -607,13 +618,33 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
       return;
     if (config.autoApprove) return;
 
+    debugLog("tool_call", {
+      toolName: event.toolName,
+      inputType: typeof event.input,
+      input: event.input,
+      cwd: ctx.cwd,
+      hasUI: ctx.hasUI,
+      autoApprove: config.autoApprove,
+    });
     const preview = await computeChangePreview(
       event.toolName as PreviewToolName,
       event.input,
       ctx.cwd,
     );
+    debugLog("preview", preview ? {
+      toolName: preview.toolName,
+      path: preview.path,
+      previewError: preview.previewError,
+      additions: preview.additions,
+      deletions: preview.deletions,
+      summaryLines: preview.summaryLines,
+      hasBeforeText: preview.beforeText !== undefined,
+      hasAfterText: preview.afterText !== undefined,
+    } : null);
     if (!preview) return;
-    if (shouldSkipReview(preview)) return;
+    const skipReview = shouldSkipReview(preview);
+    debugLog("skip_review", skipReview);
+    if (skipReview) return;
 
     const decision = await reviewChangePreview(ctx, preview, {
       allowAfterEdit: true,
@@ -625,6 +656,7 @@ export default function showDiffsExtension(pi: ExtensionAPI) {
       expandedWidth: config.expandedWidth,
       keybindings: config.keybindings,
     });
+    debugLog("decision", { action: decision.action, hasAfterTextOverride: decision.afterTextOverride !== undefined });
 
     if (decision.action === "approve_and_enable_auto") {
       setAutoApprove(true, ctx);
